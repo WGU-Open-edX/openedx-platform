@@ -359,6 +359,32 @@ def decline_sync(downstream: XBlock, user_id=None) -> None:
         store.update_item(downstream, user_id)
 
 
+def user_has_manage_library_updates(user: User, course_key: CourseKey | None) -> bool:
+    """
+    Return True if *course_key* is provided and *user* holds the
+    ``courses.manage_library_updates`` permission for that course.
+
+    This is intentionally a thin wrapper so that both
+    ``upstream_sync_container`` and ``upstream_sync_block`` can share the
+    same check without duplicating authz imports.
+    """
+    if course_key is None:
+        return False
+
+    from openedx.core.djangoapps.authz.decorators import (  # pylint: disable=wrong-import-order
+        LegacyAuthoringPermission,
+        user_has_course_permission,
+    )
+    from openedx_authz.constants.permissions import COURSES_MANAGE_LIBRARY_UPDATES  # pylint: disable=wrong-import-order
+
+    return user_has_course_permission(
+        user,
+        COURSES_MANAGE_LIBRARY_UPDATES.identifier,
+        course_key,
+        LegacyAuthoringPermission.WRITE,
+    )
+
+
 def _update_children_top_level_parent(
     downstream: XBlock,
     new_top_level_parent_key: str | None,

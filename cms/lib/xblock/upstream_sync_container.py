@@ -14,7 +14,7 @@ from xblock.core import XBlock
 
 from openedx.core.djangoapps.content_libraries import api as lib_api
 
-from .upstream_sync import UpstreamLink
+from .upstream_sync import UpstreamLink, user_has_manage_library_updates
 
 if t.TYPE_CHECKING:
     from django.contrib.auth.models import User  # pylint: disable=imported-auth-user
@@ -37,15 +37,22 @@ def sync_from_upstream_container(
 
     Should children be handled in here? Maybe if sync_from_upstream_block
     were updated to handle static assets and also save changes to modulestore.
+
+    The library-level permission check is skipped when the user holds
+    ``courses.manage_library_updates`` for ``downstream``'s course (derived
+    from ``downstream.usage_key.context_key``).
     """
     link = UpstreamLink.get_for_block(downstream)  # can raise UpstreamLinkException
     if not isinstance(link.upstream_key, LibraryContainerLocator):
         raise TypeError("sync_from_upstream_container() only supports Container upstreams, not containers")
-    lib_api.require_permission_for_library_key(  # TODO: should permissions be checked at this low level?
-        link.upstream_key.lib_key,
-        user,
-        permission=lib_api.permissions.CAN_VIEW_THIS_CONTENT_LIBRARY,
-    )
+
+    # Try course-level permission first; fall back to library-level check.
+    if not user_has_manage_library_updates(user, downstream.usage_key.context_key):
+        lib_api.require_permission_for_library_key(
+            link.upstream_key.lib_key,
+            user,
+            permission=lib_api.permissions.CAN_VIEW_THIS_CONTENT_LIBRARY,
+        )
     upstream_meta = lib_api.get_container(link.upstream_key)
     upstream_children = lib_api.get_container_children(link.upstream_key, published=True)
     _update_customizable_fields(upstream=upstream_meta, downstream=downstream, only_fetch=False)
