@@ -1,3 +1,9 @@
+"""
+CCX Coach API v2 URLs.
+
+`api/ccx_coach/v2/`
+"""
+
 from django.conf import settings
 from django.urls import re_path
 
