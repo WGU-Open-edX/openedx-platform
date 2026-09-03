@@ -12,11 +12,22 @@ import typing as t
 from django.core.exceptions import PermissionDenied
 from django.utils.translation import gettext_lazy as _
 from opaque_keys.edx.locator import LibraryUsageLocatorV2
+from openedx_authz.constants.permissions import COURSES_MANAGE_LIBRARY_UPDATES
 from rest_framework.exceptions import NotFound
 from xblock.core import XBlock
 from xblock.fields import Scope
 
-from .upstream_sync import BadDownstream, BadUpstream, UpstreamLink, user_has_manage_library_updates
+from openedx.core.djangoapps.authz.decorators import (
+    LegacyAuthoringPermission,
+    user_has_course_permission,
+)
+from openedx.core.djangoapps.xblock.api import (
+    CheckPerm,
+    LatestVersion,
+    load_block,
+)
+
+from .upstream_sync import BadDownstream, BadUpstream, UpstreamLink
 
 if t.TYPE_CHECKING:
     from django.contrib.auth.models import User  # pylint: disable=imported-auth-user
@@ -99,15 +110,15 @@ def _load_upstream_block(downstream: XBlock, user: User) -> XBlock:
     owns ``downstream``, the library-level permission check is bypassed.
     Otherwise the default ``CAN_READ_AS_AUTHOR`` check is applied.
     """
-    # We import load_block here b/c UpstreamSyncMixin is used by cms/envs, which loads before the djangoapps are ready.
-    from openedx.core.djangoapps.xblock.api import (  # pylint: disable=wrong-import-order
-        CheckPerm,
-        LatestVersion,
-        load_block,
-    )
 
     # Try course-level permission first; fall back to library-level check.
-    if user_has_manage_library_updates(user, downstream.usage_key.context_key):
+    course_key = downstream.usage_key.context_key
+    if course_key and user_has_course_permission(
+        user,
+        COURSES_MANAGE_LIBRARY_UPDATES.identifier,
+        course_key,
+        LegacyAuthoringPermission.WRITE,
+    ):
         check_perm = None
     else:
         check_perm = CheckPerm.CAN_READ_AS_AUTHOR

@@ -10,11 +10,13 @@ import typing as t
 
 from django.utils.translation import gettext_lazy as _  # noqa: F401
 from opaque_keys.edx.locator import LibraryContainerLocator
+from openedx_authz.constants.permissions import COURSES_MANAGE_LIBRARY_UPDATES
 from xblock.core import XBlock
 
+from openedx.core.djangoapps.authz.decorators import LegacyAuthoringPermission, user_has_course_permission
 from openedx.core.djangoapps.content_libraries import api as lib_api
 
-from .upstream_sync import UpstreamLink, user_has_manage_library_updates
+from .upstream_sync import UpstreamLink
 
 if t.TYPE_CHECKING:
     from django.contrib.auth.models import User  # pylint: disable=imported-auth-user
@@ -47,8 +49,14 @@ def sync_from_upstream_container(
         raise TypeError("sync_from_upstream_container() only supports Container upstreams, not containers")
 
     # Try course-level permission first; fall back to library-level check.
-    if not user_has_manage_library_updates(user, downstream.usage_key.context_key):
-        lib_api.require_permission_for_library_key(
+    course_key = downstream.usage_key.context_key
+    if not (course_key and user_has_course_permission(
+        user,
+        COURSES_MANAGE_LIBRARY_UPDATES.identifier,
+        course_key,
+        LegacyAuthoringPermission.WRITE,
+    )):
+        lib_api.require_permission_for_library_key(  # TODO: should permissions be checked at this low level?
             link.upstream_key.lib_key,
             user,
             permission=lib_api.permissions.CAN_VIEW_THIS_CONTENT_LIBRARY,
