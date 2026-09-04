@@ -17,10 +17,7 @@ from rest_framework.exceptions import NotFound
 from xblock.core import XBlock
 from xblock.fields import Scope
 
-from openedx.core.djangoapps.authz.decorators import (
-    LegacyAuthoringPermission,
-    user_has_course_permission,
-)
+from openedx.core.djangoapps.authz.decorators import user_has_course_permission
 from openedx.core.djangoapps.xblock.api import (
     CheckPerm,
     LatestVersion,
@@ -117,7 +114,6 @@ def _load_upstream_block(downstream: XBlock, user: User) -> XBlock:
         user,
         COURSES_MANAGE_LIBRARY_UPDATES.identifier,
         course_key,
-        LegacyAuthoringPermission.WRITE,
     ):
         check_perm = None
     else:

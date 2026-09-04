@@ -13,7 +13,7 @@ from opaque_keys.edx.locator import LibraryContainerLocator
 from openedx_authz.constants.permissions import COURSES_MANAGE_LIBRARY_UPDATES
 from xblock.core import XBlock
 
-from openedx.core.djangoapps.authz.decorators import LegacyAuthoringPermission, user_has_course_permission
+from openedx.core.djangoapps.authz.decorators import user_has_course_permission
 from openedx.core.djangoapps.content_libraries import api as lib_api
 
 from .upstream_sync import UpstreamLink
@@ -54,7 +54,6 @@ def sync_from_upstream_container(
         user,
         COURSES_MANAGE_LIBRARY_UPDATES.identifier,
         course_key,
-        LegacyAuthoringPermission.WRITE,
     )):
         lib_api.require_permission_for_library_key(  # TODO: should permissions be checked at this low level?
             link.upstream_key.lib_key,
