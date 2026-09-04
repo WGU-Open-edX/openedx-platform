@@ -18,11 +18,6 @@ from xblock.core import XBlock
 from xblock.fields import Scope
 
 from openedx.core.djangoapps.authz.decorators import user_has_course_permission
-from openedx.core.djangoapps.xblock.api import (
-    CheckPerm,
-    LatestVersion,
-    load_block,
-)
 
 from .upstream_sync import BadDownstream, BadUpstream, UpstreamLink
 
@@ -107,6 +102,12 @@ def _load_upstream_block(downstream: XBlock, user: User) -> XBlock:
     owns ``downstream``, the library-level permission check is bypassed.
     Otherwise the default ``CAN_READ_AS_AUTHOR`` check is applied.
     """
+    # We import load_block here b/c UpstreamSyncMixin is used by cms/envs, which loads before the djangoapps are ready.
+    from openedx.core.djangoapps.xblock.api import (  # pylint: disable=wrong-import-order
+        CheckPerm,
+        LatestVersion,
+        load_block,
+    )
 
     # Try course-level permission first; fall back to library-level check.
     course_key = downstream.usage_key.context_key
