@@ -665,8 +665,11 @@ class UpstreamTestCase(ModuleStoreTestCase):
             category="html", parent=self.unit, upstream=str(self.upstream_key)
         )
 
-        with patch("cms.lib.xblock.upstream_sync_block.load_block") as mock_load_block:
-            mock_load_block.return_value = xblock.load_block(self.upstream_key, self.user)
+        # Get upstream xblock before patching
+        real_upstream = xblock.load_block(self.upstream_key, self.user)
+
+        with patch("openedx.core.djangoapps.xblock.api.load_block") as mock_load_block:
+            mock_load_block.return_value = real_upstream
             sync_from_upstream_block(downstream, self.user)
 
         mock_load_block.assert_called_once()
