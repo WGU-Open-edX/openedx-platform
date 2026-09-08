@@ -2,6 +2,8 @@
 Tests for the CCX Coach API v2 endpoints.
 """
 
+from unittest.mock import patch
+
 from ccx_keys.locator import CCXLocator
 from django.test.utils import override_settings
 from django.urls import reverse
@@ -145,6 +147,8 @@ class CCXCoachV2CreateViewTest(CcxTestCase):
     def test_create_missing_name_returns_400(self):
         response = self.api_client.post(self._url(self.course.id), {}, format='json')
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data.get('error_code') == 'invalid_request'
+        assert 'name' in response.data.get('field_errors', {})
         assert not CustomCourseForEdX.objects.exists()
 
     def test_create_rejects_ccx_id(self):
@@ -163,3 +167,13 @@ class CCXCoachV2CreateViewTest(CcxTestCase):
         self.api_client.force_authenticate(user=UserFactory.create())
         response = self.api_client.post(self._url(self.course.id), {'name': 'X'}, format='json')
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_create_failure_returns_json_error(self):
+        """An unexpected failure during creation returns a structured JSON error, not a 500 HTML page."""
+        with patch(
+            'lms.djangoapps.ccx.api.v2.views.create_ccx_course',
+            side_effect=RuntimeError('boom'),
+        ):
+            response = self.api_client.post(self._url(self.course.id), {'name': 'My CCX'}, format='json')
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert response.data.get('error_code') == 'ccx_creation_failed'
