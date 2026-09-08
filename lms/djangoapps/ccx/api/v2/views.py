@@ -31,9 +31,18 @@ from openedx.core.lib.api.view_utils import DeveloperErrorViewMixin
 log = logging.getLogger(__name__)
 
 
-def _error_response(error_code, http_status):
-    """Return a standard DRF error response with a machine-readable code."""
-    return Response({'error_code': error_code}, status=http_status)
+def _error_response(error_code, http_status, field_errors=None):
+    """
+    Return a standard DRF error response with a machine-readable code.
+
+    All error responses from these endpoints share this shape so clients can
+    branch on ``error_code``. Field-level validation details, when present, are
+    included under ``field_errors``.
+    """
+    payload = {'error_code': error_code}
+    if field_errors:
+        payload['field_errors'] = field_errors
+    return Response(payload, status=http_status)
 
 
 class CCXCoachMetadataView(DeveloperErrorViewMixin, APIView):
@@ -129,10 +138,20 @@ class CreateCCXView(DeveloperErrorViewMixin, APIView):
             return _error_response('ccx_connector_set', status.HTTP_400_BAD_REQUEST)
 
         request_serializer = CreateCCXRequestSerializer(data=request.data)
-        request_serializer.is_valid(raise_exception=True)
+        if not request_serializer.is_valid():
+            return _error_response(
+                'invalid_request', status.HTTP_400_BAD_REQUEST, field_errors=request_serializer.errors
+            )
         name = request_serializer.validated_data['name']
 
-        ccx = create_ccx_course(master_course, request.user, name)
+        try:
+            ccx = create_ccx_course(master_course, request.user, name)
+        except Exception:  # pylint: disable=broad-except
+            # Surface any unexpected failure during CCX creation as a structured
+            # JSON error rather than letting it become a 500 HTML response.
+            log.exception('Failed to create CCX for course %s', course_id)
+            return _error_response('ccx_creation_failed', status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         ccx_course_key = CCXLocator.from_course_locator(master_course_key, str(ccx.id))
 
         data = {'master_course_key': master_course_key, 'ccx_course_key': ccx_course_key}
