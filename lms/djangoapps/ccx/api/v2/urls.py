@@ -21,4 +21,9 @@ urlpatterns = [
         views.CreateCCXView.as_view(),
         name='create_ccx',
     ),
+    re_path(
+        fr'^courses/{settings.COURSE_ID_PATTERN}/grading_policy$',
+        views.CCXGradingPolicyView.as_view(),
+        name='grading_policy',
+    ),
 ]
