@@ -177,3 +177,23 @@ class CCXCoachV2CreateViewTest(CcxTestCase):
             response = self.api_client.post(self._url(self.course.id), {'name': 'My CCX'}, format='json')
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
         assert response.data.get('error_code') == 'ccx_creation_failed'
+
+    def test_create_failure_rolls_back_partial_ccx(self):
+        """
+        A failure part-way through creation leaves no CCX behind.
+
+        The view catches the exception to return JSON, which suppresses the
+        ATOMIC_REQUESTS rollback, so creation runs inside an explicit atomic
+        block. This guards that rollback.
+        """
+        def create_then_fail(course, coach, display_name):
+            """Persist a CCX (as the real service does) and then fail."""
+            CustomCourseForEdX(course_id=course.id, coach=coach, display_name=display_name).save()
+            raise RuntimeError('boom')
+
+        with patch('lms.djangoapps.ccx.api.v2.views.create_ccx_course', side_effect=create_then_fail):
+            response = self.api_client.post(self._url(self.course.id), {'name': 'My CCX'}, format='json')
+
+        assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+        assert response.data.get('error_code') == 'ccx_creation_failed'
+        assert not CustomCourseForEdX.objects.exists()
