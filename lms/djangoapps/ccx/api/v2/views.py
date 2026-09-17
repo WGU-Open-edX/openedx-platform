@@ -13,6 +13,7 @@ Both follow the Instructor Dashboard v2 conventions (DRF `APIView` +
 import logging
 
 from ccx_keys.locator import CCXLocator
+from django.db import transaction
 from edx_rest_framework_extensions.auth.jwt.authentication import JwtAuthentication
 from edx_rest_framework_extensions.auth.session.authentication import SessionAuthenticationAllowInactiveUser
 from opaque_keys import InvalidKeyError
@@ -145,7 +146,8 @@ class CreateCCXView(DeveloperErrorViewMixin, APIView):
         name = request_serializer.validated_data['name']
 
         try:
-            ccx = create_ccx_course(master_course, request.user, name)
+            with transaction.atomic():
+                ccx = create_ccx_course(master_course, request.user, name)
         except Exception:  # pylint: disable=broad-except
             # Surface any unexpected failure during CCX creation as a structured
             # JSON error rather than letting it become a 500 HTML response.
