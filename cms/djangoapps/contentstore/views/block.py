@@ -31,7 +31,6 @@ from cms.djangoapps.contentstore.xblock_storage_handlers.xblock_helpers import g
 from cms.lib.xblock.authoring_mixin import VISIBILITY_VIEW
 from common.djangoapps.edxmako.shortcuts import render_to_response, render_to_string
 from common.djangoapps.student.auth import has_studio_read_access
-from common.djangoapps.student.roles import enable_authz_course_authoring
 from common.djangoapps.util.json_request import JsonResponse, expect_json
 from openedx.core.djangoapps.authz.constants import LegacyAuthoringPermission
 from openedx.core.djangoapps.authz.decorators import user_has_course_permission
@@ -161,12 +160,11 @@ def _user_can_manage_tags(user, course_key):
     pre-RBAC behaviour and return ``True``. When the flag is on we check the
     ``courses.manage_tags`` AuthZ permission.
     """
-    if not enable_authz_course_authoring(course_key):
-        return True
     return user_has_course_permission(
         user,
         COURSES_MANAGE_TAGS.identifier,
         course_key,
+        default_fallback=True,
     )
 
 
@@ -180,12 +178,11 @@ def _user_can_edit_title(user, course_key):
     historically always available). When the flag is on it tracks the
     ``courses.edit_course_content`` AuthZ permission.
     """
-    if not enable_authz_course_authoring(course_key):
-        return True
     return user_has_course_permission(
         user,
         COURSES_EDIT_COURSE_CONTENT.identifier,
         course_key,
+        default_fallback=True,
     )
 
 

@@ -576,7 +576,7 @@ class TestXBlockViewHandlerHeaderActionsAuthz(ItemTest):
     """
 
     AUTHZ_FLAG_PATH = (
-        "cms.djangoapps.contentstore.views.block.enable_authz_course_authoring"
+        "openedx.core.djangoapps.authz.decorators.enable_authz_course_authoring"
     )
     # Patch user_has_course_permission at the block.py binding so the
     # can_edit value is fully controlled by the test.
@@ -663,7 +663,7 @@ class TestXBlockViewHandlerHeaderActionsAuthz(ItemTest):
         resp = self.create_xblock(
             parent_usage_key=parent_usage_key, category="html"
         )
-        self.assertEqual(resp.status_code, 200)  # noqa: PT009
+        assert resp.status_code == 200
         child_usage_key = self.response_usage_key(resp)
 
         preview_url = reverse_usage_url(
@@ -672,7 +672,7 @@ class TestXBlockViewHandlerHeaderActionsAuthz(ItemTest):
             {"view_name": "container_child_preview"},
         )
         resp = self.client.get(preview_url, HTTP_ACCEPT="application/json")
-        self.assertEqual(resp.status_code, 200)  # noqa: PT009
+        assert resp.status_code == 200
         return json.loads(resp.content.decode("utf-8"))["html"]
 
     def test_header_actions_visible_when_flag_off(self):
@@ -827,7 +827,7 @@ class TestXBlockViewHandlerManageTagsAuthz(ItemTest):
     """
 
     AUTHZ_FLAG_PATH = (
-        "cms.djangoapps.contentstore.views.block.enable_authz_course_authoring"
+        "openedx.core.djangoapps.authz.decorators.enable_authz_course_authoring"
     )
     AUTHZ_PERMISSION_PATH = (
         "cms.djangoapps.contentstore.views.block.user_has_course_permission"
