@@ -1187,6 +1187,15 @@ class ProgressPageTests(ProgressPageBaseTests):
     def test_non_ascii_grade_cutoffs(self):
         self._get_progress_page()
 
+    def test_full_chrome_page_includes_nav_skip_link(self):
+        """
+        Positive control for the chromeless render_xblock skip-link test: a
+        full-chrome page must still render the "Skip to main content" link, so a
+        future change that drops it everywhere is caught rather than passing silently.
+        """
+        resp = self._get_progress_page()
+        self.assertContains(resp, 'class="nav-skip')
+
     def test_generate_cert_config(self):
 
         resp = self._get_progress_page()
