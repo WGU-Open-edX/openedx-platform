@@ -1,0 +1,39 @@
+name: Sync Fork
+
+on:
+  schedule:
+    - cron: '0 13 * * *' # runs every day at 6am MST (1pm UTC)`
+  workflow_dispatch: # allows manual triggering from the GitHub UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          # your fork's branch to sync
+          ref: master 
+          # token to allow pushing back to your fork
+          token: ${{ secrets.GITHUB_TOKEN }} 
+
+      - name: Sync upstream changes
+        id: sync
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4.1
+        with:
+          target_sync_branch: master
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
+          # The owner/repo of the upstream repository
+          upstream_sync_repo: openedx/edx-platform 
+          upstream_sync_branch: master
+
+      - name: New commits found
+        if: steps.sync.outputs.has_new_commits == 'true'
+        run: echo "New commits were found and synced."
+      
+      - name: No new commits
+        if: steps.sync.outputs.has_new_commits == 'false'
+        run: echo "There were no new commits."
+      
+      - name: Show value of 'has_new_commits'
+        run: echo ${{ steps.sync.outputs.has_new_commits }}
