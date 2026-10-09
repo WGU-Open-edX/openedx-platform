@@ -1561,7 +1561,7 @@ xblock==6.3.3
     #   xblock-google-drive
     #   xblock-poll
     #   xblocks-contrib
-xblock-drag-and-drop-v2==5.1.1
+xblock-drag-and-drop-v2==5.1.2
 xblock-google-drive==0.8.2
 xblock-poll==1.16.1
 xblocks-contrib==1.0.6

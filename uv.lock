@@ -8032,16 +8032,16 @@ django = [
 
 [[package]]
 name = "xblock-drag-and-drop-v2"
-version = "5.1.1"
+version = "5.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bleach", extra = ["css"] },
     { name = "django-statici18n" },
     { name = "xblock", extra = ["django"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/00/7ea2feda6df734c5b426328134b97d757874fc846ad22ef96a6eb103bab7/xblock_drag_and_drop_v2-5.1.1.tar.gz", hash = "sha256:262503fc30c4236339a02c34a78e743983ffbdbf7e4b8eb7984d30285a46dd42", size = 209968, upload-time = "2026-09-17T16:07:03.806Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/54/7ee8fd3cbf1c7aa3c611213783705cce278be00d91bf981d31179d0164a7/xblock_drag_and_drop_v2-5.1.2.tar.gz", hash = "sha256:f8b37b26949cce7608657ab36b5925511c84e1034848555f34397efad2386136", size = 577007, upload-time = "2026-10-01T18:53:41.227Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/51/af/0b67f23e0b0876b3fe64c6d86e3426b1fee734232a2f52537919b12b9c22/xblock_drag_and_drop_v2-5.1.1-py3-none-any.whl", hash = "sha256:882c516ab7b7829921061e49bcd555df7c3937fddb686e8ae5fa4bb70fa579b6", size = 224333, upload-time = "2026-09-17T16:07:02.635Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/a6/dda6a2c6b62858c995b2a7993aa6c225e20741358a10643bd8a1dc745402/xblock_drag_and_drop_v2-5.1.2-py3-none-any.whl", hash = "sha256:f20e45cdae27c7002bb35265c638da7b65ff4b7f4398dcb6c7b4d17757928dcc", size = 220994, upload-time = "2026-10-01T18:53:39.7Z" },
 ]
 
 [[package]]
