@@ -4,6 +4,9 @@ Tests for the AuthZ enforcement of the Instructor Dashboard API v2.
 They cover the tabs, ``authz_permissions`` and the migrated endpoints.
 """
 
+import json
+from itertools import product
+from textwrap import dedent
 from unittest.mock import patch
 
 import ddt
@@ -13,19 +16,22 @@ from openedx_authz.constants.roles import COURSE_ADMIN, COURSE_STAFF
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from common.djangoapps.student.models import CourseEnrollment
 from common.djangoapps.student.roles import CourseInstructorRole, CourseStaffRole
 from common.djangoapps.student.tests.factories import (
     InstructorFactory,
     StaffFactory,
     UserFactory,
 )
+from lms.djangoapps.courseware.models import StudentModule
 from lms.djangoapps.courseware.tabs import get_course_tab_list
 from lms.djangoapps.instructor.authz import constants
 from lms.djangoapps.instructor.authz.tests.mixins import InstructorAuthzTestMixin
+from lms.djangoapps.instructor_task.models import InstructorTask
 from openedx.core.djangoapps.django_comment_common.models import FORUM_ROLE_MODERATOR, Role
 from openedx.core.djangoapps.django_comment_common.utils import seed_permissions_roles
 from xmodule.modulestore.tests.django_utils import SharedModuleStoreTestCase
-from xmodule.modulestore.tests.factories import CourseFactory
+from xmodule.modulestore.tests.factories import BlockFactory, CourseFactory
 
 API = "lms.djangoapps.instructor.authz.api"
 
@@ -643,3 +649,204 @@ class CourseTeamMemberViewAuthzTest(CourseTeamAuthzTestMixin, SharedModuleStoreT
 
         assert response.status_code == expected_status
         assert self._has_course_role(CourseStaffRole, target) == (expected_status != status.HTTP_200_OK)
+
+
+# Grading tab requests: the AuthZ permission each one requires and the status it returns on success.
+GRADING_ACTIONS = {
+    "view_learner": (constants.COURSES_VIEW_GRADEBOOK, status.HTTP_200_OK),
+    "view_problem": (constants.COURSES_VIEW_GRADEBOOK, status.HTTP_200_OK),
+    "view_grading_config": (constants.COURSES_VIEW_GRADING_SETTINGS, status.HTTP_200_OK),
+    "reset_attempts": (constants.COURSES_MANAGE_LEARNER_GRADING, status.HTTP_200_OK),
+    "delete_state": (constants.COURSES_MANAGE_LEARNER_GRADING, status.HTTP_200_OK),
+    "rescore": (constants.COURSES_MANAGE_LEARNER_GRADING, status.HTTP_202_ACCEPTED),
+    "override_score": (constants.COURSES_MANAGE_LEARNER_GRADING, status.HTTP_202_ACCEPTED),
+    "reset_attempts_all_learners": (constants.COURSES_MANAGE_LEARNER_GRADING, status.HTTP_202_ACCEPTED),
+    "rescore_all_learners": (constants.COURSES_MANAGE_LEARNER_GRADING, status.HTTP_202_ACCEPTED),
+}
+
+# All Learners actions. With the flag off, they also require instructor access.
+ALL_LEARNERS_GRADING_ACTIONS = ("reset_attempts_all_learners", "rescore_all_learners")
+
+# The reads and the Single Learner actions, which legacy course staff can use with the flag off.
+LEGACY_STAFF_GRADING_ACTIONS = tuple(
+    action for action in GRADING_ACTIONS if action not in ALL_LEARNERS_GRADING_ACTIONS
+)
+
+
+@ddt.ddt
+class GradingTabAuthzTest(InstructorAuthzTestMixin, SharedModuleStoreTestCase):
+    """
+    The Grading tab endpoints follow the AuthZ flag.
+
+    With the flag on, ``LearnerView`` and ``ProblemView`` require
+    ``courses.view_gradebook``, ``GradingConfigView`` requires
+    ``courses.view_grading_settings``, and the Single Learner and All Learners
+    actions require ``courses.manage_learner_grading``. With the flag off,
+    each view uses its legacy bridgekeeper permission, and the All Learners
+    actions also require instructor access.
+
+    The functional behavior of each endpoint, with a legacy instructor, is
+    covered in ``tests/views/test_api_v2.py``.
+    """
+
+    PROBLEM_XML = dedent("""\
+        <problem>
+          <optionresponse>
+            <optioninput options="('Option 1','Option 2')" correct="Option 1" />
+          </optionresponse>
+        </problem>
+    """)
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.course = CourseFactory.create()
+        cls.course_key = cls.course.id
+        chapter = BlockFactory.create(parent=cls.course, category="chapter")
+        sequential = BlockFactory.create(parent=chapter, category="sequential")
+        cls.problem = BlockFactory.create(parent=sequential, category="problem", data=cls.PROBLEM_XML)
+
+    def setUp(self):
+        super().setUp()
+        self.client = APIClient()
+        # The asynchronous actions only queue their task, and deleting state skips the grade signal.
+        for target in (
+            "lms.djangoapps.instructor_task.tasks.reset_problem_attempts.apply_async",
+            "lms.djangoapps.instructor_task.tasks.rescore_problem.apply_async",
+            "lms.djangoapps.instructor_task.tasks.override_problem_score.apply_async",
+            "lms.djangoapps.grades.signals.handlers.PROBLEM_WEIGHTED_SCORE_CHANGED.send",
+        ):
+            patcher = patch(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.learner = UserFactory()
+        CourseEnrollment.enroll(self.learner, self.course_key)
+        StudentModule.objects.create(
+            student=self.learner,
+            course_id=self.course_key,
+            module_state_key=self.problem.location,
+            state=json.dumps({"attempts": 1}),
+        )
+
+    def _request(self, action, user):
+        """Send the request of a Grading tab action as ``user``."""
+        self.client.force_authenticate(user=user)
+        course_id = str(self.course_key)
+        problem = str(self.problem.location)
+        single_learner = f"?learner={self.learner.username}"
+
+        def grading_url(name):
+            return reverse(f"instructor_api_v2:{name}", kwargs={"course_id": course_id, "problem": problem})
+
+        requests = {
+            "view_learner": lambda: self.client.get(reverse(
+                "instructor_api_v2:learner_detail",
+                kwargs={"course_id": course_id, "email_or_username": self.learner.username},
+            )),
+            "view_problem": lambda: self.client.get(reverse(
+                "instructor_api_v2:problem_detail", kwargs={"course_id": course_id, "location": problem},
+            )),
+            "view_grading_config": lambda: self.client.get(reverse(
+                "instructor_api_v2:grading_config", kwargs={"course_id": course_id},
+            )),
+            "reset_attempts": lambda: self.client.post(grading_url("reset_attempts") + single_learner),
+            "delete_state": lambda: self.client.delete(grading_url("delete_state") + single_learner),
+            "rescore": lambda: self.client.post(grading_url("rescore") + single_learner),
+            "override_score": lambda: self.client.put(
+                grading_url("score_override") + single_learner, {"score": 0.5}, format="json",
+            ),
+            "reset_attempts_all_learners": lambda: self.client.post(grading_url("reset_attempts")),
+            "rescore_all_learners": lambda: self.client.post(grading_url("rescore")),
+        }
+        return requests[action]()
+
+    def _has_queued_task(self):
+        """Check whether any instructor task was submitted for the course."""
+        return InstructorTask.objects.filter(course_id=self.course_key).exists()
+
+    @ddt.data(*product((COURSE_ADMIN.external_key, COURSE_STAFF.external_key), GRADING_ACTIONS))
+    @ddt.unpack
+    def test_authz_course_role_allowed(self, authz_role, action):
+        """
+        With the flag on, Course Admin and Course Staff can use every Grading tab
+        action, including the All Learners actions that legacy course staff cannot run.
+        """
+        user = self.create_user_with_authz_role(authz_role, self.course_key)
+
+        response = self._request(action, user)
+
+        assert response.status_code == GRADING_ACTIONS[action][1]
+
+    @ddt.data(*GRADING_ACTIONS)
+    def test_authz_without_permission_denied(self, action):
+        """With the flag on, a user without AuthZ permissions is denied every Grading tab action."""
+        user = UserFactory()
+
+        response = self._request(action, user)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert not self._has_queued_task()
+
+    @ddt.data(*GRADING_ACTIONS)
+    def test_authz_requires_permission(self, action):
+        """
+        With the flag on, each action requires its own permission: no other
+        permission grants it, even to a Course Admin.
+        """
+        permission = GRADING_ACTIONS[action][0]
+        user = self.create_user_with_authz_role(COURSE_ADMIN.external_key, self.course_key)
+
+        with patch(f"{API}.authz_api.is_user_allowed", side_effect=allowed_all_except(permission)):
+            response = self._request(action, user)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert not self._has_queued_task()
+
+    @ddt.data(*GRADING_ACTIONS)
+    def test_authz_permission_alone_grants(self, action):
+        """With the flag on, the action's permission grants it to a user without any course role."""
+        permission, expected_status = GRADING_ACTIONS[action]
+        user = UserFactory()
+
+        with patch(f"{API}.authz_api.is_user_allowed", side_effect=allowed_only(permission)):
+            response = self._request(action, user)
+
+        assert response.status_code == expected_status
+
+    @ddt.data(*LEGACY_STAFF_GRADING_ACTIONS)
+    def test_legacy_staff_allowed(self, action):
+        """With the flag off, legacy course staff can use the reads and the Single Learner actions."""
+        self.set_authz_enabled(False)
+        staff = StaffFactory(course_key=self.course_key)
+
+        with patch(f"{API}.authz_api.is_user_allowed") as is_user_allowed:
+            response = self._request(action, staff)
+
+        assert response.status_code == GRADING_ACTIONS[action][1]
+        is_user_allowed.assert_not_called()
+
+    @ddt.data(*ALL_LEARNERS_GRADING_ACTIONS)
+    def test_legacy_staff_cannot_run_all_learners_action(self, action):
+        """With the flag off, legacy course staff cannot run an All Learners action: it needs instructor access."""
+        self.set_authz_enabled(False)
+        staff = StaffFactory(course_key=self.course_key)
+
+        with patch(f"{API}.authz_api.is_user_allowed") as is_user_allowed:
+            response = self._request(action, staff)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        # Denied by the view's own check, not by the permission class (which answers with ``developer_message``).
+        assert "error" in response.data
+        assert not self._has_queued_task()
+        is_user_allowed.assert_not_called()
+
+    @ddt.data(*GRADING_ACTIONS)
+    def test_legacy_without_role_denied(self, action):
+        """With the flag off, a user without a course role is denied every Grading tab action."""
+        self.set_authz_enabled(False)
+        user = UserFactory()
+
+        response = self._request(action, user)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert not self._has_queued_task()
